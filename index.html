@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LN Monitor">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#3D4826">
+<title>LN Monitor Interrato</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+/* Layout: strumento da quadro — banda olivo in testa, stato prima, card per sorgente, un grafico con selettore */
+:root{
+  --bg:#F2F3EE; --surface:#FCFCFB; --ink:#1E231A; --muted:#5F665A; --line:#DCDFD5;
+  --band:#3D4826; --band-ink:#F2F3EE; --band-muted:#B9C2A6;
+  --s1:#5E7A2E; --s2:#2F6DB5; --fan:#8A7F5C;
+  --good:#2E7D4F; --good-bg:#E4F1E8; --warn:#9A5B00; --warn-bg:#FBEFD9; --crit:#B3261E; --crit-bg:#F9E3E1;
+  --f-ui:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111310; --surface:#1A1A19; --ink:#E8EADF; --muted:#9EA595; --line:#2F332A;
+  --band:#26301A; --band-ink:#E8EADF; --band-muted:#9EA88C;
+  --s1:#7C9A40; --s2:#5B93D6; --fan:#B3A67A;
+  --good:#6CC08B; --good-bg:#1C2B21; --warn:#E3A84F; --warn-bg:#2E2414; --crit:#F08A80; --crit-bg:#33191A;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.4;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--band);z-index:20}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.wrap{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--s2);outline-offset:2px}
+
+header{background:var(--band);color:var(--band-ink);padding-top:env(safe-area-inset-top,0px)}
+header .wrap{padding-block:14px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--band-muted)}
+.brand h1{margin:0;font-size:22px;font-weight:600}
+.fresh{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--band-muted)}
+.fresh b{color:var(--band-ink);font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--band-muted);flex:none}
+.dot.live{background:#8FD18A}
+.dot.stale{background:#F0A35E}
+button.refresh{font-size:13px;color:var(--band-ink);background:transparent;border:1px solid var(--band-muted);border-radius:6px;padding:5px 10px}
+
+main{padding-block:16px 32px;display:flex;flex-direction:column;gap:22px}
+.notice{border-radius:8px;padding:10px 12px;font-size:14px;background:var(--warn-bg);color:var(--warn);border:1px solid currentColor}
+.notice.err{background:var(--crit-bg);color:var(--crit)}
+
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.chip{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--line)}
+.chip .ico{font-family:var(--f-num);font-weight:500;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;flex:none;margin-top:1px}
+.chip.good .ico{background:var(--good-bg);color:var(--good)}
+.chip.warn .ico{background:var(--warn-bg);color:var(--warn)}
+.chip.crit .ico{background:var(--crit-bg);color:var(--crit)}
+.chip.none .ico{background:var(--line);color:var(--muted)}
+.chip .t{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chip .v{font-size:15px;font-weight:500}
+
+section h2{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+section h2 em{font-style:normal;letter-spacing:.02em;text-transform:none;font-weight:400}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kpi{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .l{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-size:26px;font-weight:500;line-height:1.15}
+.kpi .v span{font-size:13px;color:var(--muted);margin-left:3px;font-family:var(--f-ui)}
+.kpi .s{font-size:12px;color:var(--muted)}
+.dim{opacity:.45}
+
+.chartcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px 10px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px}
+.tabs,.ranges{display:flex;flex-wrap:wrap;gap:4px}
+.tabs button,.ranges button{font-size:13px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:5px 10px}
+.tabs button[aria-pressed="true"]{background:var(--band);color:var(--band-ink);border-color:var(--band)}
+.ranges button[aria-pressed="true"]{border-color:var(--ink);font-weight:600}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:6px;min-height:18px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:2px;border-radius:1px;display:inline-block}
+.legend i.band{height:10px;width:12px;border-radius:2px;opacity:.35}
+.plot{position:relative;width:100%;height:260px}
+.plot svg{display:block;width:100%;height:100%;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);font-size:12px;padding:6px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);top:0;opacity:0;transition:opacity .1s;z-index:2}
+.tip.on{opacity:1}
+.tip .r{display:flex;gap:10px;justify-content:space-between}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px}
+
+.export{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.export p{margin:0;font-size:14px;color:var(--muted);flex:1 1 240px;min-width:0}
+.export button{font-size:14px;font-weight:600;padding:8px 14px;border:0;border-radius:8px;background:var(--band);color:var(--band-ink)}
+.export button:disabled{opacity:.6;cursor:default}
+.export .prog{font-size:13px;color:var(--muted);width:100%}
+
+footer{font-size:12px;color:var(--muted);line-height:1.5;display:flex;flex-direction:column;gap:8px}
+footer button{align-self:flex-start;font-size:12px;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+
+.setup{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 16px;display:flex;flex-direction:column;gap:12px;max-width:440px}
+.setup h2{margin:0;font-size:18px;font-weight:600}
+.setup p{margin:0;font-size:14px;color:var(--muted)}
+.setup label{display:flex;flex-direction:column;gap:4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.setup input{font-family:var(--f-num);font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.setup button{font-size:15px;font-weight:600;padding:10px 14px;border:0;border-radius:8px;background:var(--band);color:var(--band-ink)}
+.setup .err{color:var(--crit);font-size:14px;min-height:1em}
+@media (prefers-reduced-motion:reduce){.tip{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand"><small>LN Struct · Vigonovo</small><h1>Monitor interrato</h1></div>
+    <div class="fresh"><span class="dot" id="dot"></span><span id="freshTxt">In attesa dei dati</span><button class="refresh" id="btnRefresh" type="button">Aggiorna</button></div>
+  </div>
+</header>
+
+<main class="wrap" id="setupView" hidden>
+  <form class="setup" id="setupForm" novalidate>
+    <h2>Accesso ai dati</h2>
+    <p>Inserisci i dati del canale ThingSpeak. Restano salvati solo su questo dispositivo e non sono scritti nella pagina.</p>
+    <label for="inCh">Channel ID<input id="inCh" inputmode="numeric" autocomplete="off" required></label>
+    <label for="inKey">Read API Key<input id="inKey" autocomplete="off" autocapitalize="characters" spellcheck="false" required></label>
+    <div class="err" id="setupErr"></div>
+    <button type="submit" id="btnSave">Collega</button>
+  </form>
+</main>
+
+<main class="wrap" id="appView" hidden>
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="status">
+    <div class="chip none" id="chipMuffa"><span class="ico">–</span><div><div class="t">Pareti</div><div class="v">In attesa dei dati</div></div></div>
+    <div class="chip none" id="chipUA"><span class="ico">–</span><div><div class="t">Aria esterna</div><div class="v">In attesa dei dati</div></div></div>
+    <div class="chip none" id="chipCO2"><span class="ico">–</span><div><div class="t">Qualità aria</div><div class="v">In attesa dei dati</div></div></div>
+    <div class="chip none" id="chipFan"><span class="ico">–</span><div><div class="t">Ventola</div><div class="v">In attesa dei dati</div></div></div>
+  </div>
+
+  <section>
+    <h2>Interrato · master</h2>
+    <div class="grid">
+      <div class="kpi"><div class="l">Temperatura</div><div class="v num" id="kT">–<span>°C</span></div></div>
+      <div class="kpi"><div class="l">Umidità relativa</div><div class="v num" id="kUR">–<span>%</span></div></div>
+      <div class="kpi"><div class="l">Umidità assoluta</div><div class="v num" id="kUA">–<span>g/m³</span></div><div class="s">calcolata</div></div>
+      <div class="kpi"><div class="l">Punto di rugiada</div><div class="v num" id="kDP">–<span>°C</span></div><div class="s">calcolato</div></div>
+      <div class="kpi"><div class="l">Superficie più fredda</div><div class="v num" id="kSup">–<span>°C</span></div><div class="s">sonda DS18B20</div></div>
+      <div class="kpi"><div class="l">Margine condensa</div><div class="v num" id="kMar">–<span>°C</span></div><div class="s">superficie − rugiada</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Aria e gas · nodo <em id="nodoTxt"></em></h2>
+    <div class="grid" id="nodoGrid">
+      <div class="kpi"><div class="l">CO₂</div><div class="v num" id="kCO2">–<span>ppm</span></div></div>
+      <div class="kpi"><div class="l">VOC (MQ135)</div><div class="v num" id="kMQ135">–<span>raw</span></div></div>
+      <div class="kpi"><div class="l">CO / GPL (MQ-9)</div><div class="v num" id="kMQ9">–<span>raw</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Esterno · Vigonovo</h2>
+    <div class="grid">
+      <div class="kpi"><div class="l">Umidità assoluta</div><div class="v num" id="kUAe">–<span>g/m³</span></div><div class="s">da OpenWeatherMap</div></div>
+    </div>
+  </section>
+
+  <section class="chartcard">
+    <div class="controls">
+      <div class="tabs" id="tabs" role="group" aria-label="Grandezza">
+        <button type="button" data-k="ua" aria-pressed="true">Umidità assoluta</button>
+        <button type="button" data-k="ur" aria-pressed="false">Umidità relativa</button>
+        <button type="button" data-k="cond" aria-pressed="false">Condensa</button>
+        <button type="button" data-k="t" aria-pressed="false">Temperature</button>
+        <button type="button" data-k="co2" aria-pressed="false">CO₂</button>
+        <button type="button" data-k="gas" aria-pressed="false">Gas</button>
+      </div>
+      <div class="ranges" id="ranges" role="group" aria-label="Periodo">
+        <button type="button" data-r="6h" aria-pressed="false">6 h</button>
+        <button type="button" data-r="24h" aria-pressed="true">24 h</button>
+        <button type="button" data-r="7g" aria-pressed="false">7 g</button>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="plot" id="plot"><svg id="svg" aria-label="Grafico storico"></svg><div class="tip" id="tip"></div><div class="empty" id="empty">Caricamento…</div></div>
+  </section>
+
+  <section class="export">
+    <p>Scarica tutto lo storico del canale ThingSpeak in un file CSV, con umidità assoluta e punto di rugiada già calcolati.</p>
+    <button type="button" id="btnCsv">Scarica CSV completo</button>
+    <div class="prog" id="csvProg" hidden></div>
+  </section>
+
+  <footer>
+    <span>Dati inviati dal master ogni 5 minuti. CO₂ e gas compaiono solo quando il nodo è in interrato. Nel periodo 7 g ogni punto è la media di 30 minuti. La pagina si aggiorna da sola ogni minuto.</span>
+    <button type="button" id="btnLogout">Scollega questo dispositivo</button>
+  </footer>
+</main>
+
+<script>
+/* ── CONFIGURAZIONE ─────────────────────────────── */
+/* Nessuna credenziale nel codice: Channel ID e Read Key vengono inseriti
+   al primo avvio e salvati solo nel browser del dispositivo. */
+let CHANNEL_ID = "", READ_KEY = "";
+try{ const c=JSON.parse(localStorage.getItem("lnmon_cred")||"{}"); CHANNEL_ID=c.ch||""; READ_KEY=c.key||""; }catch(e){}
+const REFRESH_MS = 60000;
+const STALE_MIN  = 15;
+/* Campi ThingSpeak: 1 T int, 2 UR int, 3 CO2, 4 superficie più fredda,
+   5 ventola (0 spenta / 1 auto / 2 manuale), 6 MQ135, 7 MQ-9, 8 UA esterna */
+
+/* ── FISICA ─────────────────────────────────────── */
+const esat = t => 6.112*Math.exp(17.67*t/(t+243.5));
+const uaOf = (t,rh) => (t==null||rh==null) ? null : esat(t)*rh*2.1674/(273.15+t);
+const dewOf = (t,rh) => { if(t==null||rh==null||rh<=0) return null; const a=17.27,b=237.7,al=a*t/(b+t)+Math.log(rh/100); return b*al/(a-al); };
+const urSurf = (t,rh,ts) => (t==null||rh==null||ts==null) ? null : (ts<t ? Math.min(100, rh*esat(t)/esat(ts)) : rh);
+
+const RANGES = { "6h":"minutes=360", "24h":"days=1", "7g":"days=7&average=30" };
+const CHARTS = {
+  ua:   {unit:"g/m³", dec:1, series:[{n:"Interrato (calcolata)",c:"--s1",g:r=>uaOf(r[1],r[2])},{n:"Esterno",c:"--s2",g:r=>r[8]}]},
+  ur:   {unit:"%",    dec:0, series:[{n:"Aria interrato",c:"--s1",g:r=>r[2]},{n:"Sulla parete più fredda",c:"--s2",g:r=>urSurf(r[1],r[2],r[4])}], refs:[{y:80,n:"parete 80%"}]},
+  cond: {unit:"°C",   dec:1, series:[{n:"Punto di rugiada",c:"--s1",g:r=>dewOf(r[1],r[2])},{n:"Superficie più fredda",c:"--s2",g:r=>r[4]}]},
+  t:    {unit:"°C",   dec:1, series:[{n:"Aria interrato",c:"--s1",g:r=>r[1]},{n:"Superficie più fredda",c:"--s2",g:r=>r[4]}]},
+  co2:  {unit:"ppm",  dec:0, series:[{n:"CO₂ interrato",c:"--s1",g:r=>r[3]}], refs:[{y:900,n:"ventola 900"},{y:1500,n:"1500"}]},
+  gas:  {unit:"raw",  dec:0, series:[{n:"VOC (MQ135)",c:"--s1",g:r=>r[6]},{n:"CO / GPL (MQ-9)",c:"--s2",g:r=>r[7]}]}
+};
+
+let state = { range:"24h", chart:"ua", feeds:[], latest:null };
+try{ const s=JSON.parse(localStorage.getItem("lnmon")||"{}"); if(s.range in RANGES) state.range=s.range; if(s.chart in CHARTS) state.chart=s.chart; }catch(e){}
+
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const num = v => { const x=parseFloat(v); return Number.isFinite(x)?x:null; };
+const fmt = (v,d) => v==null ? "–" : v.toLocaleString("it-IT",{minimumFractionDigits:d,maximumFractionDigits:d});
+const hhmm = t => t.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+const ddhh = t => t.toLocaleDateString("it-IT",{weekday:"short",day:"numeric"});
+
+/* ThingSpeak su canale privato con chiave errata risponde "-1" o con un errore 4xx */
+class AuthError extends Error{}
+async function load(url){
+  const r = await fetch(url,{cache:"no-store"});
+  const txt = await r.text();
+  if(txt.trim()==="-1" || [400,401,403,404].includes(r.status)) throw new AuthError("credenziali non valide");
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return JSON.parse(txt);
+}
+function apiUrl(ch,key,tz=true){ return `https://api.thingspeak.com/channels/${encodeURIComponent(ch)}/feeds.json?api_key=${encodeURIComponent(key)}`+(tz?"&timezone=Europe%2FRome":"")+"&"; }
+function parse(js){
+  return (js.feeds||[]).map(e=>{
+    const o={t:new Date(e.created_at)};
+    for(let i=1;i<=8;i++) o[i]=num(e["field"+i]);
+    return o;
+  }).filter(o=>!isNaN(o.t));
+}
+
+async function refresh(){
+  if(!CHANNEL_ID || !READ_KEY) return;
+  const base=apiUrl(CHANNEL_ID,READ_KEY);
+  try{
+    const [hist,last] = await Promise.all([
+      load(base+RANGES[state.range]),
+      state.range==="24h" ? null : load(base+"minutes=60")
+    ]);
+    state.feeds = parse(hist);
+    const recent = last ? parse(last) : state.feeds;
+    state.latest = recent.length ? recent : state.latest;
+    $("notice").hidden = true;
+    renderNow(); renderChart();
+  }catch(err){
+    if(err instanceof AuthError){ showSetup("La chiave salvata non è più valida (forse è stata rigenerata su ThingSpeak). Inserisci quella attuale."); return; }
+    const n=$("notice"); n.hidden=false; n.className="notice err";
+    n.textContent = "Non riesco a leggere ThingSpeak ("+err.message+"). Controlla la connessione: riprovo tra un minuto.";
+    if(!state.feeds.length) $("empty").textContent="Nessun dato disponibile";
+  }
+}
+
+/* ultimo valore valido di ogni campo, cercato negli ultimi 30 minuti */
+function latestValues(rows){
+  const out={}; if(!rows||!rows.length) return out;
+  const tEnd=rows[rows.length-1].t;
+  for(let f=1;f<=8;f++){
+    out[f]=null;
+    for(let i=rows.length-1;i>=0;i--){
+      if(tEnd-rows[i].t>30*60000) break;
+      if(rows[i][f]!=null){ out[f]=rows[i][f]; break; }
+    }
+  }
+  out.t=tEnd; return out;
+}
+
+function setKpi(id,v,d){ $(id).firstChild.nodeValue=fmt(v,d); }
+function setChip(id,lvl,ico,text){ const c=$(id); c.className="chip "+lvl; c.querySelector(".ico").textContent=ico; c.querySelector(".v").textContent=text; }
+
+function renderNow(){
+  const L = latestValues(state.latest);
+  if(!L.t) return;
+  const ageMin = (Date.now()-L.t)/60000, stale = ageMin>STALE_MIN;
+  $("dot").className = "dot "+(stale?"stale":"live");
+  $("freshTxt").innerHTML = "Ultimo dato <b>"+hhmm(L.t)+"</b>"+(ageMin<1?" · adesso":" · "+Math.round(ageMin)+" min fa");
+  if(stale){
+    const n=$("notice"); n.hidden=false; n.className="notice";
+    n.textContent="Il master non invia dati da "+Math.round(ageMin)+" minuti. Controlla alimentazione e WiFi dell'ESP32 in interrato. I valori qui sotto sono gli ultimi ricevuti.";
+  }
+  const T=L[1], UR=L[2], TS=L[4], ua=uaOf(T,UR), dp=dewOf(T,UR);
+  const mar = (TS!=null&&dp!=null) ? TS-dp : null, urs = urSurf(T,UR,TS);
+  setKpi("kT",T,1); setKpi("kUR",UR,1); setKpi("kUA",ua,1); setKpi("kDP",dp,1);
+  setKpi("kSup",TS,1); setKpi("kMar",mar,1);
+  setKpi("kCO2",L[3],0); setKpi("kMQ135",L[6],0); setKpi("kMQ9",L[7],0); setKpi("kUAe",L[8],1);
+
+  const nodoIn = L[3]!=null || L[6]!=null || L[7]!=null;
+  $("nodoGrid").classList.toggle("dim",!nodoIn);
+  $("nodoTxt").textContent = nodoIn ? "· in interrato" : "· assente o fuori dall'interrato";
+
+  // Rischio muffa sulla parete: stesse soglie del master (UR parete 70/80/90%)
+  if(urs==null) setChip("chipMuffa","none","–", TS==null ? "Sonda DS18B20 senza dati" : "Dati insufficienti");
+  else{
+    const txt="UR sulla parete "+fmt(urs,0)+"% · margine "+fmt(mar,1)+" °C";
+    if(urs>=90||mar<1.5) setChip("chipMuffa","crit","!","Rischio alto · "+txt);
+    else if(urs>=80) setChip("chipMuffa","warn","!","Rischio medio · "+txt);
+    else if(urs>=70) setChip("chipMuffa","warn","~","Rischio basso · "+txt);
+    else setChip("chipMuffa","good","✓","Nessun rischio · "+txt);
+  }
+  // Confronto umidità assoluta interno/esterno
+  const ue=L[8];
+  if(ua==null||ue==null) setChip("chipUA","none","–","Dato meteo mancante");
+  else{
+    const d=ua-ue;
+    if(d>=1) setChip("chipUA","good","↓","Più secca di "+fmt(d,1)+" g/m³ · ricambio utile");
+    else if(d>-1) setChip("chipUA","none","=","Simile all'interno ("+(d>=0?"−":"+")+fmt(Math.abs(d),1)+" g/m³)");
+    else setChip("chipUA","warn","↑","Più umida di "+fmt(-d,1)+" g/m³ · porta vapore");
+  }
+  // CO2
+  const co2=L[3];
+  if(co2==null) setChip("chipCO2","none","–","CO₂ non disponibile (nodo fuori)");
+  else if(co2>=1500) setChip("chipCO2","crit","!",fmt(co2,0)+" ppm · scarsa, arieggia");
+  else if(co2>=900) setChip("chipCO2","warn","~",fmt(co2,0)+" ppm · sopra soglia ventola");
+  else setChip("chipCO2","good","✓",fmt(co2,0)+" ppm · buona");
+  // Ventola
+  const v=L[5];
+  if(v==null) setChip("chipFan","none","–","Stato non ricevuto");
+  else if(v>=2) setChip("chipFan","warn","●","Accesa a mano");
+  else if(v>=1) setChip("chipFan","good","●","Accesa in automatico");
+  else setChip("chipFan","none","○","Spenta");
+}
+
+/* ── GRAFICO ─────────────────────────────────────── */
+let geo=null;
+function renderChart(){
+  const cfg=CHARTS[state.chart], svg=$("svg"), box=$("plot");
+  const W=box.clientWidth, H=box.clientHeight;
+  if(!W) return;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  const rows=state.feeds;
+  const series=cfg.series.map(s=>({...s,col:css(s.c),pts:rows.map(r=>({t:+r.t,v:s.g(r)})).filter(p=>p.v!=null&&Number.isFinite(p.v))}));
+  const fanRows=rows.filter(r=>r[5]!=null);
+  const hasFan=fanRows.some(r=>r[5]>0);
+  let leg = series.length>1 ? series.map(s=>`<span><i style="background:${s.col}"></i>${s.n}</span>`).join("") : `<span>${series[0].n} · ${cfg.unit}</span>`;
+  if(hasFan) leg+=`<span><i class="band" style="background:${css("--fan")}"></i>Ventola accesa</span>`;
+  $("legend").innerHTML=leg;
+  const all=series.flatMap(s=>s.pts);
+  if(!all.length){ svg.innerHTML=""; $("empty").hidden=false; $("empty").textContent = state.chart==="co2"||state.chart==="gas" ? "Nessun dato del nodo nel periodo" : "Nessun dato nel periodo"; geo=null; return; }
+  $("empty").hidden=true;
+
+  const ink=css("--muted"), grid=css("--line"), mono="IBM Plex Mono,monospace";
+  const padL=46, padR=series.length>1?58:12, padT=10, padB=24;
+  let t0=Math.min(...all.map(p=>p.t)), t1=Math.max(...all.map(p=>p.t)); if(t1===t0) t1=t0+60000;
+  const vals=all.map(p=>p.v), vmax=Math.max(...vals);
+  (cfg.refs||[]).forEach(r=>{ if(r.y<=vmax*1.25) vals.push(r.y); });
+  let v0=Math.min(...vals), v1=Math.max(...vals);
+  const span=(v1-v0)||1; v0-=span*0.08; v1+=span*0.08;
+  const raw=(v1-v0)/4, mag=Math.pow(10,Math.floor(Math.log10(raw))), step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>s>=raw);
+  v0=Math.floor(v0/step)*step; v1=Math.ceil(v1/step)*step;
+  const X=t=>padL+(t-t0)/(t1-t0)*(W-padL-padR), Y=v=>padT+(1-(v-v0)/(v1-v0))*(H-padT-padB);
+  const dec = step>=1 ? 0 : (step>=0.1 ? 1 : 2);
+
+  let g="";
+  // bande ventola accesa
+  if(hasFan){
+    const fc=css("--fan");
+    for(let i=0;i<fanRows.length;i++){
+      if(!(fanRows[i][5]>0)) continue;
+      const a=+fanRows[i].t, b=i+1<fanRows.length ? Math.min(+fanRows[i+1].t, a+20*60000) : a+5*60000;
+      g+=`<rect x="${X(a)}" y="${padT}" width="${Math.max(1,X(Math.min(b,t1))-X(a))}" height="${H-padT-padB}" fill="${fc}" opacity=".18"/>`;
+    }
+  }
+  for(let v=v0; v<=v1+step/2; v+=step){
+    const y=Y(v);
+    g+=`<line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="${grid}" stroke-width="1"/>`;
+    g+=`<text x="${padL-6}" y="${y+4}" text-anchor="end" font-size="11" fill="${ink}" font-family="${mono}">${fmt(v,dec)}</text>`;
+  }
+  const spanH=(t1-t0)/3600000, stepH = spanH<=8?1: spanH<=30?4:24;
+  const first=new Date(t0); first.setMinutes(0,0,0); if(stepH===24) first.setHours(0);
+  for(let tt=+first; tt<=t1; tt+=stepH*3600000){
+    if(tt<t0) continue;
+    const d=new Date(tt); if(stepH<24 && d.getHours()%stepH) continue;
+    const x=X(tt);
+    g+=`<line x1="${x}" x2="${x}" y1="${H-padB}" y2="${H-padB+4}" stroke="${ink}"/>`;
+    g+=`<text x="${x}" y="${H-6}" text-anchor="middle" font-size="11" fill="${ink}" font-family="${mono}">${stepH===24?ddhh(d):hhmm(d)}</text>`;
+  }
+  (cfg.refs||[]).forEach(r=>{ if(r.y<v0||r.y>v1) return; const y=Y(r.y);
+    g+=`<line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="${ink}" stroke-dasharray="4 4" stroke-width="1"/>`;
+    g+=`<text x="${W-padR-4}" y="${y-4}" text-anchor="end" font-size="11" fill="${ink}">${r.n}</text>`; });
+
+  const gap = state.range==="7g" ? 90*60000 : 20*60000;
+  const surf=css("--surface"), inkMain=css("--ink");
+  series.forEach(s=>{
+    if(!s.pts.length) return;
+    let d="", prev=null;
+    s.pts.forEach(p=>{ d += (prev==null||p.t-prev>gap?"M":"L")+X(p.t).toFixed(1)+","+Y(p.v).toFixed(1); prev=p.t; });
+    if(series.length===1){
+      const a=s.pts[0], b=s.pts[s.pts.length-1];
+      g+=`<path d="${d}L${X(b.t)},${H-padB}L${X(a.t)},${H-padB}Z" fill="${s.col}" opacity=".10"/>`;
+    }
+    g+=`<path d="${d}" fill="none" stroke="${s.col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const e=s.pts[s.pts.length-1];
+    g+=`<circle cx="${X(e.t)}" cy="${Y(e.v)}" r="4" fill="${s.col}" stroke="${surf}" stroke-width="2"/>`;
+    if(series.length>1) g+=`<text x="${X(e.t)+8}" y="${Y(e.v)+4}" font-size="12" fill="${inkMain}" font-family="${mono}">${fmt(e.v,cfg.dec)}</text>`;
+  });
+  g+=`<line id="xh" x1="0" x2="0" y1="${padT}" y2="${H-padB}" stroke="${inkMain}" stroke-width="1" opacity="0"/><g id="xhd"></g>`;
+  svg.innerHTML=g;
+  geo={X,Y,series,fanRows,padL,padR,W,H,cfg,t0,t1};
+}
+
+function hover(ev){
+  if(!geo) return;
+  const r=$("svg").getBoundingClientRect(), x=ev.clientX-r.left;
+  if(x<geo.padL||x>geo.W-geo.padR){ leave(); return; }
+  const t=geo.t0+(x-geo.padL)/(geo.W-geo.padL-geo.padR)*(geo.t1-geo.t0);
+  let rows=[], tx=null, dots="";
+  const surf=css("--surface");
+  geo.series.forEach(s=>{
+    let best=null; for(const p of s.pts){ if(best==null||Math.abs(p.t-t)<Math.abs(best.t-t)) best=p; }
+    if(best && Math.abs(best.t-t)<45*60000){ rows.push([s,best]); tx=tx??best.t;
+      dots+=`<circle cx="${geo.X(best.t)}" cy="${geo.Y(best.v)}" r="4" fill="${s.col}" stroke="${surf}" stroke-width="2"/>`; }
+  });
+  if(!rows.length){ leave(); return; }
+  let fan=null; for(const f of geo.fanRows){ if(fan==null||Math.abs(+f.t-tx)<Math.abs(+fan.t-tx)) fan=f; }
+  const fanTxt = fan && Math.abs(+fan.t-tx)<15*60000 ? (fan[5]>=2?"accesa a mano":fan[5]>=1?"accesa":"spenta") : null;
+  const xh=$("xh"), px=geo.X(tx); xh.setAttribute("x1",px); xh.setAttribute("x2",px); xh.setAttribute("opacity",".35");
+  $("xhd").innerHTML=dots;
+  const tip=$("tip"), d=new Date(tx);
+  tip.innerHTML=`<div>${d.toLocaleDateString("it-IT",{day:"numeric",month:"short"})} ${hhmm(d)}</div>`
+    +rows.map(([s,p])=>`<div class="r"><span>${s.n}</span><b class="num">${fmt(p.v,geo.cfg.dec)} ${geo.cfg.unit}</b></div>`).join("")
+    +(fanTxt?`<div class="r"><span>Ventola</span><b>${fanTxt}</b></div>`:"");
+  tip.style.left=Math.min(Math.max(px,90),geo.W-90)+"px";
+  tip.style.top=Math.max(geo.Y(rows[0][1].v)-10,50)+"px"; tip.classList.add("on");
+}
+function leave(){ $("tip").classList.remove("on"); const xh=$("xh"); if(xh) xh.setAttribute("opacity","0"); const d=$("xhd"); if(d) d.innerHTML=""; }
+
+/* ── STORICO COMPLETO IN CSV ─────────────────────── */
+const pad2 = n => String(n).padStart(2,"0");
+const tsUTC = d => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())}%20${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+const tsLocal = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+const csvNum = (v,d) => v==null||!Number.isFinite(v) ? "" : v.toFixed(d);
+
+async function exportAll(){
+  const btn=$("btnCsv"), prog=$("csvProg");
+  btn.disabled=true; prog.hidden=false; prog.textContent="Scaricamento in corso…";
+  try{
+    const base=apiUrl(CHANNEL_ID,READ_KEY,false);
+    let all=[], end=null;
+    for(let page=0; page<300; page++){       // ThingSpeak restituisce al massimo 8000 righe per richiesta
+      const js=await load(base+"results=8000"+(end?"&end="+tsUTC(end):""));
+      const rows=parse(js);
+      if(!rows.length) break;
+      all = rows.concat(all);
+      prog.textContent = `Scaricate ${all.length.toLocaleString("it-IT")} righe, dal ${rows[0].t.toLocaleDateString("it-IT")}…`;
+      if(rows.length<8000) break;
+      end = new Date(+rows[0].t - 1000);
+    }
+    if(!all.length){ prog.textContent="Il canale non contiene ancora dati."; return; }
+    const head="data_ora,temp_interrato_C,UR_interrato_pct,CO2_ppm,temp_superficie_min_C,ventola,MQ135_raw,MQ9_raw,UA_esterna_g_m3,UA_interrato_g_m3,punto_rugiada_C";
+    const lines=all.map(r=>[
+      tsLocal(r.t), csvNum(r[1],1), csvNum(r[2],1), csvNum(r[3],0), csvNum(r[4],1),
+      r[5]==null?"":(r[5]>=2?"MANUALE":r[5]>=1?"AUTO":"OFF"),
+      csvNum(r[6],0), csvNum(r[7],0), csvNum(r[8],1),
+      csvNum(uaOf(r[1],r[2]),2), csvNum(dewOf(r[1],r[2]),2)
+    ].join(","));
+    const name=`ln_monitor_${tsLocal(new Date()).slice(0,10)}.csv`;
+    const file=new File([head+"\n"+lines.join("\n")+"\n"], name, {type:"text/csv"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:name}); }catch(e){ if(e.name!=="AbortError") throw e; }
+    }else{
+      const a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download=name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+    }
+    prog.textContent=`File pronto: ${all.length.toLocaleString("it-IT")} righe, dal ${all[0].t.toLocaleDateString("it-IT")} al ${all[all.length-1].t.toLocaleDateString("it-IT")}.`;
+  }catch(err){
+    prog.textContent = err instanceof AuthError ? "ThingSpeak ha rifiutato la chiave: ricollega il dispositivo." : "Scaricamento non riuscito ("+err.message+"). Riprova con una connessione migliore.";
+  }finally{ btn.disabled=false; }
+}
+
+/* ── EVENTI ─────────────────────────────────────── */
+$("svg").addEventListener("pointermove",hover);
+$("svg").addEventListener("pointerdown",hover);
+$("svg").addEventListener("pointerleave",leave);
+function save(){ try{ localStorage.setItem("lnmon",JSON.stringify({range:state.range,chart:state.chart})); }catch(e){} }
+function press(groupId,attr,val){ document.querySelectorAll(`#${groupId} button`).forEach(b=>b.setAttribute("aria-pressed",String(b.dataset[attr]===val))); }
+$("tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; state.chart=b.dataset.k; press("tabs","k",state.chart); save(); leave(); renderChart(); });
+$("ranges").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; state.range=b.dataset.r; press("ranges","r",state.range); save(); $("empty").hidden=false; $("empty").textContent="Caricamento…"; refresh(); });
+$("btnRefresh").addEventListener("click",refresh);
+$("btnCsv").addEventListener("click",exportAll);
+window.addEventListener("resize",()=>{ leave(); renderChart(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>renderChart());
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && READ_KEY) refresh(); });
+
+/* ── ACCESSO ─────────────────────────────────────── */
+function showSetup(msg){
+  $("appView").hidden=true; $("setupView").hidden=false;
+  $("inCh").value = CHANNEL_ID; $("inKey").value = "";
+  $("setupErr").textContent = msg||"";
+  (CHANNEL_ID ? $("inKey") : $("inCh")).focus();
+}
+function showApp(){
+  $("setupView").hidden=true; $("appView").hidden=false;
+  renderChart(); refresh();
+}
+$("setupForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const ch=$("inCh").value.trim(), key=$("inKey").value.trim().toUpperCase();
+  if(!/^\d+$/.test(ch)){ $("setupErr").textContent="Il Channel ID è un numero, lo trovi in Channel Settings."; return; }
+  if(key.length<8){ $("setupErr").textContent="Incolla la Read API Key completa (scheda API Keys)."; return; }
+  $("btnSave").disabled=true; $("btnSave").textContent="Verifica in corso…"; $("setupErr").textContent="";
+  try{
+    await load(apiUrl(ch,key)+"results=1");
+    CHANNEL_ID=ch; READ_KEY=key;
+    try{ localStorage.setItem("lnmon_cred",JSON.stringify({ch,key})); }catch(_){}
+    showApp();
+  }catch(err){
+    $("setupErr").textContent = err instanceof AuthError
+      ? "ThingSpeak ha rifiutato i dati: controlla Channel ID e Read Key."
+      : "Non riesco a raggiungere ThingSpeak. Controlla la connessione e riprova.";
+  }finally{
+    $("btnSave").disabled=false; $("btnSave").textContent="Collega";
+  }
+});
+$("btnLogout").addEventListener("click",()=>{
+  try{ localStorage.removeItem("lnmon_cred"); }catch(_){}
+  READ_KEY=""; state.feeds=[]; state.latest=null;
+  showSetup("Dispositivo scollegato. La chiave è stata cancellata da questo telefono.");
+});
+
+press("tabs","k",state.chart); press("ranges","r",state.range);
+if(CHANNEL_ID && READ_KEY) showApp(); else showSetup();
+setInterval(()=>{ if(!document.hidden && READ_KEY) refresh(); }, REFRESH_MS);
+setInterval(()=>{ if(state.latest) renderNow(); }, 30000);
+</script>
+</body>
+</html>
